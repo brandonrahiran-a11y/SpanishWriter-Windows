@@ -54,7 +54,7 @@ internal sealed class MarkForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "1.6";
+    const string AppVersion = "1.7";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -163,7 +163,10 @@ internal sealed class Writer : Form
         timer.Interval = 500;
         timer.Tick += Poll;
         timer.Start();
-        Shown += (s, e) => Hide();
+        Shown += (s, e) => {
+            Hide();
+            tray.ShowBalloonTip(4000, "Corrector español activo", "Busca el icono azul junto al reloj. Abre el menú con clic derecho.", ToolTipIcon.Info);
+        };
     }
 
     static GraphicsPath Rounded(Size size, int radius)
@@ -570,7 +573,14 @@ internal sealed class Writer : Form
             bool first;
             using (var mutex = new System.Threading.Mutex(true, "Local\\SpanishWriter-6DC68A97", out first))
             {
-                if (!first) { record("Ya existe una instancia."); return; }
+                if (!first)
+                {
+                    record("Ya existe una instancia.");
+                    if (args.Length == 0)
+                        MessageBox.Show("El corrector ya está abierto junto al reloj. Busca el icono azul en los iconos ocultos (flecha ^) y haz clic derecho para ver el menú.",
+                            "SpanishWriter ya está en ejecución", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
                 using (var app = new Writer())
                 {
                     record("Aplicación inicializada. " + app.SelfTest());

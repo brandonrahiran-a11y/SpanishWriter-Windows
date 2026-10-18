@@ -19,7 +19,7 @@ Requiere Windows con .NET Framework 4.x. En PowerShell:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1
 ```
 
-Abre `SpanishWriter.exe`. El icono junto al reloj indica la versión y permite pausar o salir. Solo se ejecuta una instancia.
+Abre `SpanishWriter.exe`. Una notificación confirma que se inició; el icono azul queda junto al reloj o dentro de los iconos ocultos (flecha ^). Su menú permite pausar o salir. Si vuelves a abrirlo mientras está en ejecución, aparece un aviso para localizar la instancia activa.
 
 El icono de la aplicación procede de `assets/logo.png`. `CreateIcon.ps1` genera los tamaños de Windows en `assets/SpanishWriter.ico`; `Build.ps1` lo incorpora al ejecutable. Si cambias el logo, ejecuta primero `CreateIcon.ps1` y después `Build.ps1`.
 
