@@ -154,7 +154,8 @@ internal sealed class Writer : Form
         spanishItem.Checked = true;
         menu.Items.Add("Pausar / reanudar", null, (s, e) => { active = !active; tray.Text = active ? "Corrector español " + AppVersion + ": activo" : "Corrector español " + AppVersion + ": pausado"; if (!active) { HideMarks(); Hide(); } });
         menu.Items.Add("Salir", null, (s, e) => Close());
-        tray.Icon = SystemIcons.Information;
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        tray.Icon = Icon;
         tray.ContextMenuStrip = menu;
         tray.Text = "Corrector español " + AppVersion + ": activo";
         tray.Visible = true;

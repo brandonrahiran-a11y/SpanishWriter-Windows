@@ -4,7 +4,9 @@ $wpf = Join-Path $root 'WPF'
 $refs = @('System.Windows.Forms.dll','System.Drawing.dll','System.Web.Extensions.dll') | ForEach-Object { Join-Path $root $_ }
 $refs += @('WindowsBase.dll','UIAutomationClient.dll','UIAutomationTypes.dll') | ForEach-Object { Join-Path $wpf $_ }
 $exe = Join-Path $PSScriptRoot 'SpanishWriter.exe'
-$args = @('/nologo','/codepage:65001','/target:winexe','/platform:x64',"/out:$exe") + ($refs | ForEach-Object { "/reference:$_" }) + (Get-ChildItem (Join-Path $PSScriptRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty FullName)
+$icon = Join-Path $PSScriptRoot 'assets\SpanishWriter.ico'
+if (-not (Test-Path -LiteralPath $icon)) { & (Join-Path $PSScriptRoot 'CreateIcon.ps1') | Out-Null }
+$args = @('/nologo','/codepage:65001','/target:winexe','/platform:x64',"/out:$exe","/win32icon:$icon") + ($refs | ForEach-Object { "/reference:$_" }) + (Get-ChildItem (Join-Path $PSScriptRoot 'src') -Filter '*.cs' | Select-Object -ExpandProperty FullName)
 & (Join-Path $root 'csc.exe') $args
 if ($LASTEXITCODE -ne 0) { throw 'Error al compilar.' }
 Write-Output $exe

@@ -21,6 +21,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1
 
 Abre `SpanishWriter.exe`. El icono junto al reloj indica la versión y permite pausar o salir. Solo se ejecuta una instancia.
 
+El icono de la aplicación procede de `assets/logo.png`. `CreateIcon.ps1` genera los tamaños de Windows en `assets/SpanishWriter.ico`; `Build.ps1` lo incorpora al ejecutable. Si cambias el logo, ejecuta primero `CreateIcon.ps1` y después `Build.ps1`.
+
 ## Pruebas
 
 `tests/AccentRulesTest.cs` comprueba reglas contextuales de tildes. `tests/SpellApiTest.cs` comprueba las reglas locales y, si WPS está instalado, la lectura de su diccionario. Las pruebas no requieren datos personales.
