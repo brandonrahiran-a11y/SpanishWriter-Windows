@@ -54,7 +54,7 @@ internal sealed class MarkForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "1.7";
+    const string AppVersion = "1.8";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -84,7 +84,10 @@ internal sealed class Writer : Form
     readonly List<MarkForm> marks = new List<MarkForm>();
     readonly WindowsSpeller speller = new WindowsSpeller();
     readonly HarperBridge harper = new HarperBridge(AppDomain.CurrentDomain.BaseDirectory);
+    readonly System.Threading.EventWaitHandle activation;
     bool englishMode;
+    bool statusOpen;
+    DateTime statusUntilUtc;
     AutomationElement target;
     ValuePattern editable;
     TextPattern textPattern;
@@ -110,8 +113,9 @@ internal sealed class Writer : Form
         get { var p = base.CreateParams; p.ExStyle |= 0x08000080; p.ClassStyle |= 0x00020000; return p; }
     }
 
-    public Writer()
+    public Writer(System.Threading.EventWaitHandle activationEvent)
     {
+        activation = activationEvent;
         Text = "Corrector español " + AppVersion;
         Size = new Size(540, 132);
         FormBorderStyle = FormBorderStyle.None;
@@ -132,7 +136,7 @@ internal sealed class Writer : Form
         closeButton.BackColor = Color.FromArgb(247, 250, 252);
         closeButton.ForeColor = Color.FromArgb(90, 111, 123);
         closeButton.Bounds = new Rectangle(498, 7, 28, 28);
-        closeButton.Click += (s, e) => Hide();
+        closeButton.Click += (s, e) => { statusOpen = false; Hide(); };
         status.Bounds = new Rectangle(18, 38, 502, 22);
         status.ForeColor = Color.FromArgb(96, 112, 123);
         status.Text = "Elige una corrección";
@@ -146,7 +150,7 @@ internal sealed class Writer : Form
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Corrector español " + AppVersion).Enabled = false;
-        menu.Items.Add("Mostrar panel", null, (s, e) => Show());
+        menu.Items.Add("Mostrar panel", null, (s, e) => ShowStatus());
         var spanishItem = (ToolStripMenuItem)menu.Items.Add("Idioma: español", null, (s, e) => SelectEnglish(false));
         var englishItem = (ToolStripMenuItem)menu.Items.Add("Idioma: inglés (Harper)", null, (s, e) => SelectEnglish(true));
         spanishItem.Click += (s, e) => { spanishItem.Checked = true; englishItem.Checked = false; };
@@ -159,14 +163,28 @@ internal sealed class Writer : Form
         tray.ContextMenuStrip = menu;
         tray.Text = "Corrector español " + AppVersion + ": activo";
         tray.Visible = true;
-        tray.DoubleClick += (s, e) => Show();
+        tray.DoubleClick += (s, e) => ShowStatus();
         timer.Interval = 500;
-        timer.Tick += Poll;
-        timer.Start();
-        Shown += (s, e) => {
-            Hide();
-            tray.ShowBalloonTip(4000, "Corrector español activo", "Busca el icono azul junto al reloj. Abre el menú con clic derecho.", ToolTipIcon.Info);
+        timer.Tick += (s, e) => {
+            if (activation.WaitOne(0)) { ShowStatus(); return; }
+            Poll(s, e);
         };
+        timer.Start();
+        Shown += (s, e) => ShowStatus();
+    }
+
+    void ShowStatus()
+    {
+        HideMarks();
+        rows.Controls.Clear();
+        heading.Text = "Corrector español " + AppVersion;
+        status.Text = active ? "Activo. Escribe en Edge, Opera o DuckDuckGo." : "Pausado. Reanúdalo desde el icono junto al reloj.";
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Bounds = new Rectangle(area.Right - Width - 18, area.Bottom - Height - 18, Width, Height);
+        statusOpen = true;
+        statusUntilUtc = DateTime.UtcNow.AddSeconds(6);
+        Show();
+        BringToFront();
     }
 
     static GraphicsPath Rounded(Size size, int radius)
@@ -218,6 +236,12 @@ internal sealed class Writer : Form
 
     void Poll(object sender, EventArgs e)
     {
+        if (statusOpen)
+        {
+            if (DateTime.UtcNow < statusUntilUtc) return;
+            statusOpen = false;
+            Hide();
+        }
         if (!active) return;
         try
         {
@@ -382,6 +406,7 @@ internal sealed class Writer : Form
 
     void ShowSuggestions(Issue issue, Rectangle mark)
     {
+        statusOpen = false;
         rows.Controls.Clear();
         heading.Text = "Revisar «" + issue.Word + "»";
         status.Text = editable == null ? "Elige una sugerencia" : "Pulsa para corregir en el texto";
@@ -571,17 +596,16 @@ internal sealed class Writer : Form
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             bool first;
+            using (var activation = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, "Local\\SpanishWriter-Show-6DC68A97"))
             using (var mutex = new System.Threading.Mutex(true, "Local\\SpanishWriter-6DC68A97", out first))
             {
                 if (!first)
                 {
                     record("Ya existe una instancia.");
-                    if (args.Length == 0)
-                        MessageBox.Show("El corrector ya está abierto junto al reloj. Busca el icono azul en los iconos ocultos (flecha ^) y haz clic derecho para ver el menú.",
-                            "SpanishWriter ya está en ejecución", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (args.Length == 0) activation.Set();
                     return;
                 }
-                using (var app = new Writer())
+                using (var app = new Writer(activation))
                 {
                     record("Aplicación inicializada. " + app.SelfTest());
                     if (args.Length > 0 && args[0] == "--self-test") { Console.WriteLine(app.SelfTest()); return; }
