@@ -22,6 +22,7 @@ internal sealed class MarkForm : Form
 {
     public Issue Issue;
     public Action<Issue> Clicked;
+    UnderlineForm line;
     protected override bool ShowWithoutActivation { get { return true; } }
     protected override CreateParams CreateParams
     {
@@ -33,28 +34,56 @@ internal sealed class MarkForm : Form
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
-        BackColor = Color.FromArgb(220, 244, 253);
-        Opacity = 0.84;
+        BackColor = Color.Black;
+        Opacity = 0.01;
         Cursor = Cursors.Hand;
         Height = 22;
-        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         Click += (s, e) => { if (Clicked != null) Clicked(Issue); };
         MouseEnter += (s, e) => { if (Clicked != null) Clicked(Issue); };
     }
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        line = new UnderlineForm { Bounds = Bounds, Cursor = Cursors.Hand };
+        line.Click += (s, args) => { if (Clicked != null) Clicked(Issue); };
+        line.MouseEnter += (s, args) => { if (Clicked != null) Clicked(Issue); };
+        line.Show();
+    }
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        if (line != null) { line.Close(); line.Dispose(); line = null; }
+        base.OnFormClosed(e);
+    }
+}
+
+internal sealed class UnderlineForm : Form
+{
+    protected override bool ShowWithoutActivation { get { return true; } }
+    protected override CreateParams CreateParams
+    {
+        get { var p = base.CreateParams; p.ExStyle |= 0x08000080; return p; }
+    }
+    public UnderlineForm()
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        StartPosition = FormStartPosition.Manual;
+        ShowInTaskbar = false;
+        TopMost = true;
+        BackColor = Color.Magenta;
+        TransparencyKey = Color.Magenta;
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        base.OnPaint(e);
         using (var pen = new Pen(Color.FromArgb(0, 170, 224), 2f))
-        {
             for (int x = 0; x < Width; x += 6)
                 e.Graphics.DrawLines(pen, new Point[] { new Point(x, 3), new Point(Math.Min(Width, x + 3), 6), new Point(Math.Min(Width, x + 6), 3) });
-        }
     }
 }
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "1.8";
+    const string AppVersion = "2.0";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
