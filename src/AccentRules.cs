@@ -54,6 +54,7 @@ internal static class AccentRules
             else if (current == "tu" && SecondPersonVerbs.Contains(next)) suggestion = "tú";
             else if (current == "el" && ThirdPersonVerbs.Contains(next)) suggestion = "él";
             else if (current == "esta" && ThirdPersonSubjects.Contains(previous)) suggestion = "está";
+            else if (current == "envias") suggestion = "envías";
             else if (current == "mas") suggestion = "más";
 
             if (suggestion != null)

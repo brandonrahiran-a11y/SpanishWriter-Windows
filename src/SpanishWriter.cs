@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.0";
+    const string AppVersion = "2.4";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -120,7 +120,8 @@ internal sealed class Writer : Form
     AutomationElement target;
     ValuePattern editable;
     TextPattern textPattern;
-    TextPatternRange consoleLineRange;
+    TextPatternRange activeTextRange;
+    AutomationElement textOwner;
     int rangeOffset;
     IntPtr targetWindow;
     bool targetConsole;
@@ -130,6 +131,7 @@ internal sealed class Writer : Form
     bool exactPositionLogged;
     bool markPositionLogged;
     bool consoleSampleLogged;
+    bool officeTreeLogged;
     bool accentSampleLogged;
     DateTime lastConsoleProbeAt = DateTime.MinValue;
     DateTime lastForegroundProbeAt = DateTime.MinValue;
@@ -285,18 +287,20 @@ internal sealed class Writer : Form
             }
             if (process == "spanishwriter" && Visible) return;
             bool console = process == "windowsterminal" || process == "openconsole" || process == "cmd" || process == "conhost" || process == "wt";
-            if (!console && process != "msedge" && process != "opera" && process != "duckduckgo" && process != "duckduckgo.webview") { HideMarks(); Hide(); return; }
+            bool office = process == "wps" || process == "et" || process == "wpp" || process == "winword" || process == "excel" || process == "powerpnt" || process == "onenote" || process == "outlook";
+            if (!console && !office && process != "msedge" && process != "opera" && process != "duckduckgo" && process != "duckduckgo.webview") { HideMarks(); Hide(); return; }
             var focus = AutomationElement.FocusedElement;
             if (focus == null || focus.Current.IsPassword) { HideMarks(); Hide(); return; }
             object pattern;
             ValuePattern vp = null;
             TextPattern tp = null;
+            AutomationElement owner = null;
             string text = null;
             if (!console && focus.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) { vp = (ValuePattern)pattern; text = vp.Current.Value; }
             var textElement = focus;
             for (int depth = 0; depth < 5 && textElement != null; depth++)
             {
-                if (textElement.TryGetCurrentPattern(TextPattern.Pattern, out pattern)) { tp = (TextPattern)pattern; break; }
+                if (textElement.TryGetCurrentPattern(TextPattern.Pattern, out pattern)) { tp = (TextPattern)pattern; owner = textElement; break; }
                 textElement = TreeWalker.ControlViewWalker.GetParent(textElement);
             }
             if (console && !consoleLogged)
@@ -317,7 +321,7 @@ internal sealed class Writer : Form
                         lineRange.ExpandToEnclosingUnit(TextUnit.Line);
                         string whole = lineRange.GetText(2000).TrimEnd('\r', '\n', '\0');
                         int prompt = whole.LastIndexOf('>');
-                        if (prompt >= 0 && prompt < whole.Length - 1)
+                        if (lineRange.GetBoundingRectangles().Length == 1 && prompt >= 0 && prompt < whole.Length - 1)
                         {
                             offset = prompt + 1;
                             text = whole.Substring(offset);
@@ -325,8 +329,60 @@ internal sealed class Writer : Form
                     }
                 }
                 catch { lineRange = null; }
+                if (text == null)
+                {
+                    try
+                    {
+                        var visible = tp.GetVisibleRanges();
+                        if (visible != null && visible.Length > 0)
+                        {
+                            var candidate = visible[visible.Length - 1].Clone();
+                            candidate.MoveEndpointByRange(TextPatternRangeEndpoint.Start, candidate, TextPatternRangeEndpoint.End);
+                            candidate.ExpandToEnclosingUnit(TextUnit.Line);
+                            string whole = candidate.GetText(2000).TrimEnd('\r', '\n', '\0');
+                            if (candidate.GetBoundingRectangles().Length == 1)
+                            {
+                                int prompt = whole.LastIndexOf('>');
+                                if (prompt >= 0 && prompt < whole.Length - 1)
+                                {
+                                    lineRange = candidate;
+                                    offset = prompt + 1;
+                                    text = whole.Substring(offset);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
-            else if (text == null && tp != null) text = tp.DocumentRange.GetText(4000);
+            if (office && text == null && tp != null)
+            {
+                try
+                {
+                    var selection = tp.GetSelection();
+                    if (selection != null && selection.Length == 1 && selection[0].GetText(-1).Length == 0)
+                    {
+                        lineRange = selection[0].Clone();
+                        lineRange.ExpandToEnclosingUnit(TextUnit.Paragraph);
+                        string paragraph = lineRange.GetText(4001).TrimEnd('\r', '\n', '\0');
+                        if (paragraph.Length <= 4000) text = paragraph;
+                    }
+                }
+                catch { lineRange = null; }
+            }
+            if (process == "wps" && !officeTreeLogged)
+            {
+                officeTreeLogged = true;
+                LogOfficeTree(focus);
+            }
+            if (office && (DateTime.UtcNow - lastConsoleProbeAt).TotalSeconds >= 5)
+            {
+                lastConsoleProbeAt = DateTime.UtcNow;
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") +
+                    " Office lectura: proceso=" + process + ", control=" + focus.Current.ControlType.ProgrammaticName +
+                    ", valor=" + (vp != null) + ", texto=" + (tp != null) + ", longitud=" + (text == null ? -1 : text.Length) + Environment.NewLine); } catch { }
+            }
+            if (!console && !office && text == null && tp != null) text = tp.DocumentRange.GetText(4000);
             if (console && (DateTime.UtcNow - lastConsoleProbeAt).TotalSeconds >= 5)
             {
                 lastConsoleProbeAt = DateTime.UtcNow;
@@ -344,7 +400,8 @@ internal sealed class Writer : Form
             target = focus;
             editable = vp;
             textPattern = tp;
-            consoleLineRange = console ? lineRange : null;
+            activeTextRange = (console || office) ? lineRange : null;
+            textOwner = owner;
             rangeOffset = offset;
             targetWindow = GetForegroundWindow();
             targetConsole = console;
@@ -385,6 +442,42 @@ internal sealed class Writer : Form
     {
         foreach (var mark in marks) { mark.Close(); mark.Dispose(); }
         marks.Clear();
+    }
+
+    static void LogOfficeTree(AutomationElement focus)
+    {
+        try
+        {
+            var lines = new List<string>();
+            var pending = new Queue<Tuple<AutomationElement, int>>();
+            pending.Enqueue(Tuple.Create(focus, 0));
+            var parent = TreeWalker.ControlViewWalker.GetParent(focus);
+            if (parent != null) pending.Enqueue(Tuple.Create(parent, 0));
+            while (pending.Count > 0 && lines.Count < 80)
+            {
+                var item = pending.Dequeue();
+                try
+                {
+                    object value, text;
+                    bool hasValue = item.Item1.TryGetCurrentPattern(ValuePattern.Pattern, out value);
+                    bool hasText = item.Item1.TryGetCurrentPattern(TextPattern.Pattern, out text);
+                    int length = hasValue ? ((ValuePattern)value).Current.Value.Length : -1;
+                    lines.Add(item.Item2 + ":" + item.Item1.Current.ControlType.ProgrammaticName +
+                        ":value=" + length + ":text=" + hasText);
+                    if (item.Item2 >= 4) continue;
+                    var child = TreeWalker.ControlViewWalker.GetFirstChild(item.Item1);
+                    for (int n = 0; child != null && n < 20; n++)
+                    {
+                        pending.Enqueue(Tuple.Create(child, item.Item2 + 1));
+                        child = TreeWalker.ControlViewWalker.GetNextSibling(child);
+                    }
+                }
+                catch { }
+            }
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"),
+                DateTime.Now.ToString("s") + " WPS árbol UIA (sin contenido): " + string.Join(" | ", lines.ToArray()) + Environment.NewLine);
+        }
+        catch { }
     }
 
     void ShowMarks(List<Issue> issues, AutomationElement focus, bool console)
@@ -459,7 +552,32 @@ internal sealed class Writer : Form
     {
         try
         {
-            if (targetConsole) { Clipboard.SetText(replacement); status.Text = "Comando: sugerencia copiada. Pégala donde corresponda."; return; }
+            if (targetConsole)
+            {
+                try
+                {
+                    var word = issue.Range ?? IssueRange(issue);
+                    if (word == null) throw new Exception("No hay rango exacto de la palabra.");
+                    if (!checkedText.EndsWith(issue.Word, StringComparison.Ordinal))
+                        throw new Exception("La palabra no está al final del comando.");
+                    var caret = textPattern.GetSelection();
+                    if (caret == null || caret.Length != 1 || caret[0].GetText(-1).Length != 0 ||
+                        caret[0].CompareEndpoints(TextPatternRangeEndpoint.Start, word, TextPatternRangeEndpoint.End) != 0)
+                        throw new Exception("No se confirmó el cursor después de la palabra.");
+                    if (!SetForegroundWindow(targetWindow)) throw new Exception("No se pudo activar la consola.");
+                    for (int n = 0; n < issue.Length; n++) PressKey(0x08); // Backspace.
+                    TypeUnicode(replacement);
+                    checkedText = checkedFingerprint = "";
+                    HideMarks(); Hide();
+                }
+                catch (Exception ex)
+                {
+                    Clipboard.SetText(replacement);
+                    status.Text = "La consola no admitió el reemplazo. Sugerencia copiada.";
+                    try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Consola: reemplazo fallido: " + ex.Message + Environment.NewLine); } catch { }
+                }
+                return;
+            }
             bool applied = false;
             if (textPattern != null)
             {
@@ -498,20 +616,21 @@ internal sealed class Writer : Form
     TextPatternRange IssueRange(Issue issue)
     {
         if (textPattern == null) return null;
-        if (targetConsole)
+        if (activeTextRange != null)
         {
-            if (consoleLineRange == null) return null;
             try
             {
-                var line = consoleLineRange.Clone();
+                var line = activeTextRange.Clone();
                 line.MoveEndpointByRange(TextPatternRangeEndpoint.End, line, TextPatternRangeEndpoint.Start);
                 line.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, rangeOffset + issue.Start + issue.Length);
                 line.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, rangeOffset + issue.Start);
-                if (line.GetText(-1) == issue.Word && InField(line, target.Current.BoundingRectangle)) return line;
+                var activeField = (textOwner ?? target).Current.BoundingRectangle;
+                if (line.GetText(-1) == issue.Word && InField(line, activeField)) return line;
             }
             catch { }
-            return null;
+            if (targetConsole) return null;
         }
+        else if (targetConsole) return null;
         var document = textPattern.DocumentRange;
         var field = target.Current.BoundingRectangle;
         if (target.Current.ControlType == ControlType.Group)
@@ -597,6 +716,17 @@ internal sealed class Writer : Form
         if (SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT))) != inputs.Count)
             throw new Exception("Windows no aceptó la escritura de la corrección.");
     }
+
+    static void PressKey(ushort key)
+    {
+        var inputs = new[] {
+            new INPUT { Type = 1, Keyboard = new KEYBDINPUT { Key = key } },
+            new INPUT { Type = 1, Keyboard = new KEYBDINPUT { Key = key, Flags = 0x0002 } }
+        };
+        if (SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) != 2)
+            throw new Exception("Windows no aceptó una tecla de edición.");
+    }
+
 
     public string SelfTest()
     {
