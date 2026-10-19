@@ -1,0 +1,11 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddInLoad">
+  <ribbon startFromScratch="false">
+    <tabs>
+      <tab id="SpanishWriterTab" label="SpanishWriter">
+        <group id="SpanishWriterGroup" label="Integración con WPS">
+          <button id="SpanishWriterProbe" label="Comprobar lectura" onAction="SpanishWriterProbe" size="large" />
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
