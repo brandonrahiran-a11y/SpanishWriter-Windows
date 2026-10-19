@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.6";
+    const string AppVersion = "2.7";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -113,6 +113,7 @@ internal sealed class Writer : Form
     readonly List<MarkForm> marks = new List<MarkForm>();
     readonly WindowsSpeller speller = new WindowsSpeller();
     readonly HarperBridge harper = new HarperBridge(AppDomain.CurrentDomain.BaseDirectory);
+    readonly WpsAddinServer wpsServer;
     readonly System.Threading.EventWaitHandle activation;
     bool englishMode;
     bool statusOpen;
@@ -147,6 +148,8 @@ internal sealed class Writer : Form
     public Writer(System.Threading.EventWaitHandle activationEvent)
     {
         activation = activationEvent;
+        try { wpsServer = new WpsAddinServer(AppDomain.CurrentDomain.BaseDirectory); }
+        catch (Exception ex) { try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Servidor WPS no disponible: " + ex.Message + Environment.NewLine); } catch { } }
         Text = "Corrector español " + AppVersion;
         Size = new Size(540, 132);
         FormBorderStyle = FormBorderStyle.None;
@@ -738,7 +741,7 @@ internal sealed class Writer : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { timer.Dispose(); tray.Visible = false; tray.Dispose(); HideMarks(); }
+        if (disposing) { timer.Dispose(); if (wpsServer != null) wpsServer.Dispose(); tray.Visible = false; tray.Dispose(); HideMarks(); }
         base.Dispose(disposing);
     }
 

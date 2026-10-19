@@ -17,7 +17,7 @@ if (Test-Path -LiteralPath $publish) {
 if ($xml.DocumentElement.Name -ne 'jsplugins') { throw 'publish.xml de WPS tiene un formato inesperado.' }
 $old = @($xml.DocumentElement.SelectNodes("jspluginonline[@name='SpanishWriterWps']"))
 foreach ($item in $old) { [void]$xml.DocumentElement.RemoveChild($item) }
-$url = ([System.Uri]::new($addin.TrimEnd('\') + '\')).AbsoluteUri
+$url = 'http://127.0.0.1:17825/wps/'
 $entry = $xml.CreateElement('jspluginonline')
 $entry.SetAttribute('name','SpanishWriterWps')
 $entry.SetAttribute('type','wps')
