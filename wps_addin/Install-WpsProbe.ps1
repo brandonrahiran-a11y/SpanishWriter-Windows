@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $addin = (Resolve-Path -LiteralPath $PSScriptRoot).Path
-$required = @('index.html','main.js','ribbon.xml')
+$required = @('main.js','ribbon.xml')
 foreach ($name in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $addin $name))) { throw "Falta $name" }
 }
