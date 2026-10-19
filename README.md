@@ -1,6 +1,6 @@
 # SpanishWriter para Windows
 
-Corrector local que observa el campo de texto activo y muestra sugerencias junto a la palabra. Reconoce campos de Edge, Opera y DuckDuckGo. La compatibilidad con CMD/Windows Terminal y documentos de WPS/Office está en desarrollo y depende de la información que cada programa expone a Windows.
+Corrector local que observa el campo de texto activo y muestra sugerencias junto a la palabra. Intenta revisar cualquier aplicación que exponga su texto y posición mediante la API de accesibilidad de Windows. Se ha probado en campos de Edge, Opera y DuckDuckGo. La compatibilidad con CMD/Windows Terminal y documentos de WPS/Office depende de la información que cada programa expone a Windows.
 
 ## Corrección
 

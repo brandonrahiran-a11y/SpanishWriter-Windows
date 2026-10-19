@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.5";
+    const string AppVersion = "2.6";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -209,7 +209,7 @@ internal sealed class Writer : Form
         HideMarks();
         rows.Controls.Clear();
         heading.Text = "Corrector español " + AppVersion;
-        status.Text = active ? "Activo. Escribe en Edge, Opera o DuckDuckGo." : "Pausado. Reanúdalo desde el icono junto al reloj.";
+        status.Text = active ? "Activo. Revisa los campos de texto compatibles." : "Pausado. Reanúdalo desde el icono junto al reloj.";
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Bounds = new Rectangle(area.Right - Width - 18, area.Bottom - Height - 18, Width, Height);
         statusOpen = true;
@@ -288,7 +288,8 @@ internal sealed class Writer : Form
             if (process == "spanishwriter" && Visible) return;
             bool console = process == "windowsterminal" || process == "openconsole" || process == "cmd" || process == "conhost" || process == "wt";
             bool office = process == "wps" || process == "et" || process == "wpp" || process == "winword" || process == "excel" || process == "powerpnt" || process == "onenote" || process == "outlook";
-            if (!console && !office && process != "msedge" && process != "opera" && process != "duckduckgo" && process != "duckduckgo.webview") { HideMarks(); Hide(); return; }
+            // Consultar cualquier aplicación que exponga texto editable a UI Automation.
+            // La posición y el contenido de cada palabra se vuelven a verificar antes de marcarla.
             var focus = AutomationElement.FocusedElement;
             if (focus == null || focus.Current.IsPassword) { HideMarks(); Hide(); return; }
             object pattern;
