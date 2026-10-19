@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.4";
+    const string AppVersion = "2.5";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -453,7 +453,7 @@ internal sealed class Writer : Form
             pending.Enqueue(Tuple.Create(focus, 0));
             var parent = TreeWalker.ControlViewWalker.GetParent(focus);
             if (parent != null) pending.Enqueue(Tuple.Create(parent, 0));
-            while (pending.Count > 0 && lines.Count < 80)
+            while (pending.Count > 0 && lines.Count < 120)
             {
                 var item = pending.Dequeue();
                 try
@@ -464,12 +464,12 @@ internal sealed class Writer : Form
                     int length = hasValue ? ((ValuePattern)value).Current.Value.Length : -1;
                     lines.Add(item.Item2 + ":" + item.Item1.Current.ControlType.ProgrammaticName +
                         ":value=" + length + ":text=" + hasText);
-                    if (item.Item2 >= 4) continue;
-                    var child = TreeWalker.ControlViewWalker.GetFirstChild(item.Item1);
-                    for (int n = 0; child != null && n < 20; n++)
+                    if (item.Item2 >= 5) continue;
+                    var child = TreeWalker.RawViewWalker.GetFirstChild(item.Item1);
+                    for (int n = 0; child != null && n < 25; n++)
                     {
                         pending.Enqueue(Tuple.Create(child, item.Item2 + 1));
-                        child = TreeWalker.ControlViewWalker.GetNextSibling(child);
+                        child = TreeWalker.RawViewWalker.GetNextSibling(child);
                     }
                 }
                 catch { }

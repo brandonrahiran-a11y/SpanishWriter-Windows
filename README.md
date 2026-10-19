@@ -29,7 +29,9 @@ El icono de la aplicación procede de `assets/logo.png`. `CreateIcon.ps1` genera
 
 ## Limitaciones
 
-Windows Terminal y WPS pueden no exponer el texto o la posición exacta del cursor a la API de accesibilidad de Windows. La aplicación omite el subrayado cuando no puede ubicar la palabra con seguridad. La compatibilidad con CMD y WPS requiere validación en una sesión interactiva.
+Windows Terminal puede no exponer la posición exacta del cursor. La aplicación omite el reemplazo cuando no puede ubicar la palabra con seguridad.
+
+En la versión de WPS probada el 18 de octubre de 2026, el editor no expone el texto del documento a la API de accesibilidad de Windows, ni en la vista normal ni en la vista completa. SpanishWriter no puede subrayar ni reemplazar palabras dentro de ese editor. Para corregir allí, activa el corrector integrado de WPS: **Revisar > Corrector ortográfico > Establecer idioma de corrección > Español**. WPS permite mostrar subrayados mientras escribes.
 
 Harper es un corrector de gramática para inglés. No se aplica al texto español.
 Harper está disponible como modo inglés opcional en el menú del icono. Descarga el archivo oficial `harper-cli-x86_64-pc-windows-msvc.zip` de las [versiones de Harper](https://github.com/Automattic/harper/releases), extrae `harper-cli.exe` en `engines/` junto al ejecutable y reinicia SpanishWriter. También se reconoce si `harper-cli.exe` está en `PATH`. Harper no está incluido en este repositorio.
