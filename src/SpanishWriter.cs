@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.7";
+    const string AppVersion = "2.8";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -148,7 +148,7 @@ internal sealed class Writer : Form
     public Writer(System.Threading.EventWaitHandle activationEvent)
     {
         activation = activationEvent;
-        try { wpsServer = new WpsAddinServer(AppDomain.CurrentDomain.BaseDirectory); }
+        try { wpsServer = new WpsAddinServer(AppDomain.CurrentDomain.BaseDirectory, SuggestForWps); }
         catch (Exception ex) { try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Servidor WPS no disponible: " + ex.Message + Environment.NewLine); } catch { } }
         Text = "Corrector español " + AppVersion;
         Size = new Size(540, 132);
@@ -252,6 +252,15 @@ internal sealed class Writer : Form
             native.Add(accent);
         }
         return native.OrderBy(x => x.Start).Take(5).ToList();
+    }
+
+    string SuggestForWps(string word)
+    {
+        if (InvokeRequired) return (string)Invoke(new Func<string, string>(SuggestForWps), new object[] { word });
+        if (!active || englishMode || String.IsNullOrWhiteSpace(word)) return "{\"suggestions\":[]}";
+        var exact = Check(word).FirstOrDefault(x => x.Start == 0 && x.Length == word.Length);
+        return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(
+            new { suggestions = exact == null ? new string[0] : exact.Suggestions });
     }
 
     void SelectEnglish(bool enabled)

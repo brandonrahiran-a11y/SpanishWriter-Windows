@@ -4,6 +4,7 @@
       <tab id="SpanishWriterTab" label="SpanishWriter">
         <group id="SpanishWriterGroup" label="Integración con WPS">
           <button id="SpanishWriterProbe" label="Comprobar lectura" onAction="SpanishWriterProbe" size="large" />
+          <button id="SpanishWriterCorrect" label="Corregir palabra" onAction="SpanishWriterCorrect" size="large" />
         </group>
       </tab>
     </tabs>

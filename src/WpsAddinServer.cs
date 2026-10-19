@@ -12,10 +12,12 @@ public sealed class WpsAddinServer : IDisposable
     readonly TcpListener listener;
     readonly Thread thread;
     readonly string root;
+    readonly Func<string, string> suggest;
 
-    public WpsAddinServer(string baseDirectory)
+    public WpsAddinServer(string baseDirectory, Func<string, string> suggestCallback)
     {
         root = Path.Combine(baseDirectory, "wps_addin");
+        suggest = suggestCallback;
         listener = new TcpListener(IPAddress.Loopback, Port);
         listener.Start();
         thread = new Thread(Run) { IsBackground = true, Name = "SpanishWriter WPS add-in" };
@@ -46,7 +48,8 @@ public sealed class WpsAddinServer : IDisposable
             string request = reader.ReadLine();
             if (request == null) return;
             string[] words = request.Split(' ');
-            string route = words.Length >= 2 ? words[1].Split('?')[0] : "";
+            string target = words.Length >= 2 ? words[1] : "";
+            string route = target.Split('?')[0];
             bool get = words.Length >= 1 && (words[0] == "GET" || words[0] == "HEAD");
             string type = "text/plain; charset=utf-8";
             byte[] body;
@@ -66,8 +69,15 @@ public sealed class WpsAddinServer : IDisposable
                 type = "application/xml; charset=utf-8";
                 body = File.ReadAllBytes(Path.Combine(root, "ribbon.xml"));
             }
+            else if (route == "/wps/suggest")
+            {
+                type = "application/json; charset=utf-8";
+                string query = target.Contains("?") ? target.Substring(target.IndexOf('?') + 1) : "";
+                string word = query.StartsWith("word=") ? Uri.UnescapeDataString(query.Substring(5)) : "";
+                body = Encoding.UTF8.GetBytes(word.Length <= 100 && suggest != null ? suggest(word) : "{\"suggestions\":[]}");
+            }
             else body = Encoding.UTF8.GetBytes("Not found");
-            int status = !get ? 405 : route == "/wps/" || route == "/wps/index.html" || route == "/wps/main.js" || route == "/wps/ribbon.xml" ? 200 : 404;
+            int status = !get ? 405 : route == "/wps/" || route == "/wps/index.html" || route == "/wps/main.js" || route == "/wps/ribbon.xml" || route == "/wps/suggest" ? 200 : 404;
             string header = "HTTP/1.1 " + status + (status == 200 ? " OK" : " Error") + "\r\n" +
                 "Content-Type: " + type + "\r\nContent-Length: " + body.Length +
                 "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
