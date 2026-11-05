@@ -59,7 +59,8 @@ internal static class AccentRules
 
             if (suggestion != null)
             {
-                if (Char.IsUpper(word.Value[0])) suggestion = Char.ToUpperInvariant(suggestion[0]) + suggestion.Substring(1);
+                if (word.Value == word.Value.ToUpperInvariant()) suggestion = suggestion.ToUpperInvariant();
+                else if (Char.IsUpper(word.Value[0])) suggestion = Char.ToUpperInvariant(suggestion[0]) + suggestion.Substring(1);
                 issues.Add(new Issue { Start = word.Index, Length = word.Length, Word = word.Value, Suggestions = new[] { suggestion } });
             }
         }

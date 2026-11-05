@@ -83,7 +83,7 @@ internal sealed class UnderlineForm : Form
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.8";
+    const string AppVersion = "2.9";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -212,7 +212,10 @@ internal sealed class Writer : Form
         HideMarks();
         rows.Controls.Clear();
         heading.Text = "Corrector español " + AppVersion;
-        status.Text = active ? "Activo. Revisa los campos de texto compatibles." : "Pausado. Reanúdalo desde el icono junto al reloj.";
+        var uppercase = Check("PRUEVA").FirstOrDefault(x => x.Start == 0 && x.Length == 6);
+        status.Text = active
+            ? "Activo. PRUEVA → " + (uppercase == null || uppercase.Suggestions.Length == 0 ? "sin sugerencia" : uppercase.Suggestions[0])
+            : "Pausado. Reanúdalo desde el icono junto al reloj.";
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Bounds = new Rectangle(area.Right - Width - 18, area.Bottom - Height - 18, Width, Height);
         statusOpen = true;
@@ -279,9 +282,8 @@ internal sealed class Writer : Form
 
     void Poll(object sender, EventArgs e)
     {
-        if (statusOpen)
+        if (statusOpen && DateTime.UtcNow >= statusUntilUtc)
         {
-            if (DateTime.UtcNow < statusUntilUtc) return;
             statusOpen = false;
             Hide();
         }
@@ -498,6 +500,7 @@ internal sealed class Writer : Form
         HideMarks();
         if (issues.Count == 0) return;
         var field = focus.Current.BoundingRectangle;
+        bool fallbackShown = false;
         foreach (var issue in issues)
         {
             Rectangle bounds;
@@ -522,6 +525,13 @@ internal sealed class Writer : Form
             }
             catch
             {
+                if (!fallbackShown && !console && issue.Suggestions.Length > 0 &&
+                    field.Width > 0 && field.Height > 0)
+                {
+                    var nearField = new Rectangle((int)field.Left, (int)field.Bottom, 1, 1);
+                    ShowSuggestions(issue, nearField);
+                    fallbackShown = true;
+                }
                 if (!exactPositionLogged)
                 {
                     exactPositionLogged = true;
@@ -744,8 +754,11 @@ internal sealed class Writer : Form
     public string SelfTest()
     {
         var errors = Check("Esto es una prueva de ortografia.");
+        var uppercase = Check("PRUEVA");
         var accents = Check("El camión llegó con música y café.");
-        return "Versión " + AppVersion + "; idioma: " + speller.Language + "; errores: " + string.Join(", ", errors.Select(i => i.Word).ToArray()) + "; tildes marcadas: " + string.Join(", ", accents.Select(i => i.Word).ToArray());
+        return "Versión " + AppVersion + "; idioma: " + speller.Language + "; errores: " + string.Join(", ", errors.Select(i => i.Word).ToArray()) +
+            "; PRUEVA => " + (uppercase.Count == 0 ? "sin detectar" : string.Join(", ", uppercase[0].Suggestions)) +
+            "; tildes marcadas: " + string.Join(", ", accents.Select(i => i.Word).ToArray());
     }
 
     protected override void Dispose(bool disposing)

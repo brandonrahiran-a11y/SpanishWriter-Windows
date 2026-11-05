@@ -1,5 +1,13 @@
 # SpanishWriter para Windows
 
+## Versión 2.9
+
+- Detecta faltas escritas completamente en mayúsculas, como `PRUEVA`, y conserva las mayúsculas en la sugerencia `PRUEBA`.
+- Muestra una tarjeta de sugerencia cuando el campo de texto expone su contenido pero no la posición exacta de la palabra.
+- Revisa el texto mientras se muestra la tarjeta inicial, sin esperar a que se cierre.
+
+Si ya tienes SpanishWriter abierto, elige **Salir** desde su icono junto al reloj antes de iniciar el ejecutable actualizado. La tarjeta inicial debe mostrar **2.9** y `PRUEVA → PRUEBA`.
+
 Corrector local que observa el campo de texto activo y muestra sugerencias junto a la palabra. Intenta revisar cualquier aplicación que exponga su texto y posición mediante la API de accesibilidad de Windows. Se ha probado en campos de Edge, Opera y DuckDuckGo. La compatibilidad con CMD/Windows Terminal y documentos de WPS/Office depende de la información que cada programa expone a Windows.
 
 ## Corrección
