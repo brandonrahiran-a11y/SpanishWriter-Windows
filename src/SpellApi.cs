@@ -48,6 +48,12 @@ internal sealed class WindowsSpeller
 
     public WindowsSpeller() : this(false) { }
 
+    internal WindowsSpeller(HunspellFallback dictionary)
+    {
+        hunspell = dictionary;
+        Language = dictionary == null ? "reglas locales" : "es-CO (diccionario local)";
+    }
+
     internal WindowsSpeller(bool forceLocalRules)
     {
         Language = "reglas locales";
@@ -91,13 +97,19 @@ internal sealed class WindowsSpeller
                 string[] suggestions = null;
                 if (replacement.Length > 0)
                 {
-                    if (char.IsUpper(match.Value[0])) replacement = char.ToUpperInvariant(replacement[0]) + replacement.Substring(1);
-                    suggestions = new[] { replacement };
+                    suggestions = new[] { MatchCase(match.Value, replacement) };
                 }
-                else if (hunspell != null && !char.IsUpper(match.Value[0]) &&
+                else if (hunspell != null &&
                     !Regex.IsMatch(match.Value, @"(?i)^(echo|cmd|dir|cd|cls|copy|del|type|more|findstr|powershell|exe|com|http|https)$"))
                 {
-                    try { if (!hunspell.IsCorrect(match.Value)) suggestions = hunspell.Suggestions(match.Value); }
+                    try
+                    {
+                        string normalized = match.Value.ToLowerInvariant();
+                        if (!hunspell.IsCorrect(match.Value) && !hunspell.IsCorrect(normalized))
+                        {
+                            suggestions = Array.ConvertAll(hunspell.Suggestions(normalized), x => MatchCase(match.Value, x));
+                        }
+                    }
                     catch { hunspell = null; Language = "reglas locales"; }
                 }
                 if (suggestions == null || suggestions.Length == 0) continue;
@@ -109,7 +121,7 @@ internal sealed class WindowsSpeller
         IEnumSpellingError errors;
         try { checker.Check(text, out errors); }
         catch { checker = null; hunspell = HunspellFallback.TryCreate(); Language = hunspell == null ? "reglas locales" : "es-CO (diccionario local)"; return Check(text); }
-        if (errors == null) return found;
+        if (errors == null) return AddUppercaseIssues(text, found);
         for (int count = 0; count < 5; count++)
         {
             ISpellingError error;
@@ -139,6 +151,34 @@ internal sealed class WindowsSpeller
             Marshal.ReleaseComObject(error);
         }
         Marshal.ReleaseComObject(errors);
+        return AddUppercaseIssues(text, found);
+    }
+
+    List<Issue> AddUppercaseIssues(string text, List<Issue> found)
+    {
+        foreach (Match match in Regex.Matches(text, @"\b[\p{L}]{3,}\b"))
+        {
+            string word = match.Value;
+            if (!char.IsUpper(word[0]) || word != word.ToUpperInvariant()) continue;
+            if (found.Exists(x => x.Start == match.Index && x.Length == match.Length)) continue;
+            var normalizedIssues = Check(word.ToLowerInvariant());
+            if (normalizedIssues.Count == 0 || normalizedIssues[0].Start != 0 || normalizedIssues[0].Length != word.Length)
+                continue;
+            found.Add(new Issue
+            {
+                Start = match.Index, Length = match.Length, Word = word,
+                Suggestions = Array.ConvertAll(normalizedIssues[0].Suggestions, x => MatchCase(word, x))
+            });
+        }
+        found.Sort((a, b) => a.Start.CompareTo(b.Start));
+        if (found.Count > 5) found.RemoveRange(5, found.Count - 5);
         return found;
+    }
+
+    static string MatchCase(string original, string suggestion)
+    {
+        if (original == original.ToUpperInvariant()) return suggestion.ToUpperInvariant();
+        if (char.IsUpper(original[0])) return char.ToUpperInvariant(suggestion[0]) + suggestion.Substring(1);
+        return suggestion;
     }
 }
