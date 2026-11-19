@@ -1,5 +1,11 @@
 # SpanishWriter para Windows
 
+Versión consolidada: **3.0**. Esta carpeta reúne la base 2.8 y las mejoras de
+reemplazo y diccionario de la copia local `SpanishWriter`. Compila y ejecuta esta
+copia desde `SpanishWriter-Windows-main` para mantener una sola versión de trabajo.
+Si hay una instancia anterior abierta, usa **Salir** en su icono junto al reloj
+antes de abrir el ejecutable actualizado.
+
 Corrector local que observa el campo de texto activo y muestra sugerencias junto a la palabra. Intenta revisar cualquier aplicación que exponga su texto y posición mediante la API de accesibilidad de Windows. Se ha probado en campos de Edge, Opera y DuckDuckGo. La compatibilidad con CMD/Windows Terminal y documentos de WPS/Office depende de la información que cada programa expone a Windows.
 
 ## Corrección
@@ -7,9 +13,13 @@ Corrector local que observa el campo de texto activo y muestra sugerencias junto
 - Primero intenta usar el corrector de español de Windows.
 - Si Windows no permite abrirlo, intenta usar el diccionario `es_CO` de Hunspell instalado con WPS Office. Solo usa los archivos ya instalados; este repositorio no incluye WPS, Hunspell ni sus diccionarios.
 - Si ninguno está disponible, aplica una lista breve de errores frecuentes y reglas contextuales de tildes.
+- Un diccionario complementario incluido en el ejecutable (`dictionaries/*.txt`: medicamentos, términos clínicos, tecnología y español de Colombia) evita marcar palabras que Windows no conoce y antepone sugerencias cercanas, por ejemplo `bisoprolool` → `bisoprolol`. Admite los plurales regulares.
+- **Agregar al diccionario** guarda la palabra en `%APPDATA%\SpanishWriter\diccionario-personal.txt`. El archivo se abre desde el menú del icono y se recarga solo al guardarlo. **Ignorar** omite la palabra hasta cerrar el corrector.
 - El texto se procesa localmente y no se envía a servidores.
 
 La línea azul bajo la palabra se puede abrir con el puntero o con un clic. En consola, el corrector solo intenta reemplazar una palabra situada inmediatamente antes del cursor cuando Windows confirma su posición exacta. Si no puede comprobarla, copia la sugerencia al portapapeles sin modificar el comando. No ejecuta comandos.
+
+En los demás campos, espera a que el editor confirme el foco y la selección exacta de la palabra antes de escribir. Si no puede confirmarla, intenta actualizar el valor del campo solo si el texto sigue intacto; de lo contrario, copia la sugerencia al portapapeles.
 
 ## Compilar
 
@@ -26,6 +36,8 @@ El icono de la aplicación procede de `assets/logo.png`. `CreateIcon.ps1` genera
 ## Pruebas
 
 `tests/AccentRulesTest.cs` comprueba reglas contextuales de tildes. `tests/SpellApiTest.cs` comprueba las reglas locales y, si WPS está instalado, la lectura de su diccionario. Las pruebas no requieren datos personales.
+
+Ejecuta `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunTests.ps1` para compilar y ejecutar las pruebas, incluidas las de Harper y los casos de reemplazo con selección tardía, ignorada o perdida, cambios de foco y texto modificado.
 
 ## Limitaciones
 

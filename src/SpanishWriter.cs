@@ -16,6 +16,89 @@ internal class Issue
     public string Word;
     public string[] Suggestions;
     public TextPatternRange Range;
+    public string Kind = "Ortografía";
+}
+
+internal static class Theme
+{
+    public static float Scale = 1f;
+    public static int S(int pixels) { return (int)Math.Round(pixels * Scale); }
+    public static readonly Color Background = Color.FromArgb(252, 253, 254);
+    public static readonly Color Border = Color.FromArgb(218, 228, 236);
+    public static readonly Color Text = Color.FromArgb(24, 39, 52);
+    public static readonly Color Muted = Color.FromArgb(98, 114, 128);
+    public static readonly Color Accent = Color.FromArgb(0, 112, 168);
+    // Un solo color para subrayados y etiquetas: el azul original del corrector.
+    public static readonly Color Mark = Color.FromArgb(0, 170, 224);
+
+
+    public static Color Shade(Color color, int amount)
+    {
+        return Color.FromArgb(color.A, Math.Max(0, color.R - amount), Math.Max(0, color.G - amount), Math.Max(0, color.B - amount));
+    }
+
+    public static GraphicsPath Rounded(Rectangle bounds, int radius)
+    {
+        var path = new GraphicsPath();
+        int d = Math.Max(2, Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height)));
+        path.AddArc(bounds.Left, bounds.Top, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Top, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.Left, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
+
+// Botón dibujado a mano: no toma el foco, así el campo de texto conserva el cursor.
+internal sealed class Chip : Control
+{
+    public enum Look { Primary, Secondary, Ghost }
+    public Look Style = Look.Secondary;
+    public Color Accent = Theme.Accent;
+    bool hover, pressed;
+
+    public Chip()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, false);
+        Cursor = Cursors.Hand;
+    }
+
+    public Chip Fit()
+    {
+        var text = TextRenderer.MeasureText(Text, Font);
+        Size = new Size(text.Width + Theme.S(Style == Look.Ghost ? 16 : 26), Theme.S(Style == Look.Ghost ? 28 : 34));
+        return this;
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hover = pressed = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnMouseDown(MouseEventArgs e) { pressed = true; Invalidate(); base.OnMouseDown(e); }
+    protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.Clear(Parent != null ? Parent.BackColor : Theme.Background);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        Color fill, border, text;
+        if (Style == Look.Primary) { fill = hover ? Theme.Shade(Accent, 22) : Accent; border = fill; text = Color.White; }
+        else if (Style == Look.Secondary) { fill = hover ? Color.FromArgb(226, 241, 250) : Color.FromArgb(241, 247, 251); border = Color.FromArgb(200, 222, 236); text = Theme.Shade(Accent, 14); }
+        else { fill = hover ? Color.FromArgb(236, 243, 248) : Theme.Background; border = fill; text = Accent; }
+        if (pressed) { fill = Theme.Shade(fill, 18); border = Theme.Shade(border, 18); }
+        var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+        using (var path = Theme.Rounded(bounds, Style == Look.Ghost ? Theme.S(6) : Height / 2))
+        using (var brush = new SolidBrush(fill))
+        using (var pen = new Pen(border))
+        {
+            g.FillPath(brush, path);
+            g.DrawPath(pen, path);
+        }
+        TextRenderer.DrawText(g, Text, Font, ClientRectangle, text, fill,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+    }
 }
 
 internal sealed class MarkForm : Form
@@ -37,14 +120,14 @@ internal sealed class MarkForm : Form
         BackColor = Color.Black;
         Opacity = 0.01;
         Cursor = Cursors.Hand;
-        Height = 22;
+        Height = Theme.S(22);
         Click += (s, e) => { if (Clicked != null) Clicked(Issue); };
         MouseEnter += (s, e) => { if (Clicked != null) Clicked(Issue); };
     }
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        line = new UnderlineForm { Bounds = Bounds, Cursor = Cursors.Hand };
+        line = new UnderlineForm { Bounds = Bounds, Cursor = Cursors.Hand, LineColor = Theme.Mark };
         line.Click += (s, args) => { if (Clicked != null) Clicked(Issue); };
         line.MouseEnter += (s, args) => { if (Clicked != null) Clicked(Issue); };
         line.Show();
@@ -58,6 +141,7 @@ internal sealed class MarkForm : Form
 
 internal sealed class UnderlineForm : Form
 {
+    public Color LineColor = Theme.Mark;
     protected override bool ShowWithoutActivation { get { return true; } }
     protected override CreateParams CreateParams
     {
@@ -75,15 +159,17 @@ internal sealed class UnderlineForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        using (var pen = new Pen(Color.FromArgb(0, 170, 224), 2f))
-            for (int x = 0; x < Width; x += 6)
-                e.Graphics.DrawLines(pen, new Point[] { new Point(x, 3), new Point(Math.Min(Width, x + 3), 6), new Point(Math.Min(Width, x + 6), 3) });
+        // Sin suavizado: TransparencyKey dejaría bordes rosados con antialiasing.
+        int step = Math.Max(4, Theme.S(4)), top = Theme.S(2), bottom = top + Math.Max(3, Theme.S(3));
+        using (var pen = new Pen(LineColor, Math.Max(2f, Theme.Scale * 1.6f)))
+            for (int x = 0; x < Width; x += step * 2)
+                e.Graphics.DrawLines(pen, new Point[] { new Point(x, top), new Point(Math.Min(Width, x + step), bottom), new Point(Math.Min(Width, x + step * 2), top) });
     }
 }
 
 internal sealed class Writer : Form
 {
-    const string AppVersion = "2.8";
+    const string AppVersion = "3.0";
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -106,12 +192,21 @@ internal sealed class Writer : Form
 
     readonly Timer timer = new Timer();
     readonly NotifyIcon tray = new NotifyIcon();
+    readonly Label kindLabel = new Label();
     readonly Label status = new Label();
     readonly Label heading = new Label();
-    readonly Button closeButton = new Button();
+    readonly Chip closeButton = new Chip();
     readonly FlowLayoutPanel rows = new FlowLayoutPanel();
+    readonly FlowLayoutPanel actions = new FlowLayoutPanel();
+    readonly Font chipFont = new Font("Segoe UI Semibold", 10f);
     readonly List<MarkForm> marks = new List<MarkForm>();
-    readonly WindowsSpeller speller = new WindowsSpeller();
+    readonly CustomDictionary dictionary = new CustomDictionary();
+    readonly HashSet<string> ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    readonly WindowsSpeller speller;
+    DateTime dictionaryStamp = DateTime.MinValue;
+    DateTime lastDictionaryProbeAt = DateTime.MinValue;
+    int separatorY = -1;
+    ToolStripMenuItem pauseItem;
     readonly HarperBridge harper = new HarperBridge(AppDomain.CurrentDomain.BaseDirectory);
     readonly WpsAddinServer wpsServer;
     readonly System.Threading.EventWaitHandle activation;
@@ -150,47 +245,51 @@ internal sealed class Writer : Form
         activation = activationEvent;
         try { wpsServer = new WpsAddinServer(AppDomain.CurrentDomain.BaseDirectory, SuggestForWps); }
         catch (Exception ex) { try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Servidor WPS no disponible: " + ex.Message + Environment.NewLine); } catch { } }
+        speller = new WindowsSpeller(dictionary);
+        dictionaryStamp = DictionaryStamp();
+        using (var g = CreateGraphics()) Theme.Scale = Math.Max(1f, g.DpiX / 96f);
         Text = "Corrector español " + AppVersion;
-        Size = new Size(540, 132);
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
-        Font = new Font("Segoe UI", 9);
-        BackColor = Color.FromArgb(247, 250, 252);
-        Opacity = 0.94;
-        heading.Text = "Sugerencias";
-        heading.Font = new Font("Segoe UI", 11, FontStyle.Bold);
-        heading.ForeColor = Color.FromArgb(28, 49, 64);
-        heading.Bounds = new Rectangle(18, 10, 465, 25);
-        closeButton.Text = "×";
-        closeButton.Font = new Font("Segoe UI", 12);
-        closeButton.FlatStyle = FlatStyle.Flat;
-        closeButton.FlatAppearance.BorderSize = 0;
-        closeButton.BackColor = Color.FromArgb(247, 250, 252);
-        closeButton.ForeColor = Color.FromArgb(90, 111, 123);
-        closeButton.Bounds = new Rectangle(498, 7, 28, 28);
+        Font = new Font("Segoe UI", 9.5f);
+        BackColor = Theme.Background;
+        kindLabel.Font = new Font("Segoe UI Semibold", 7.5f);
+        kindLabel.AutoSize = false;
+        heading.Font = new Font("Segoe UI Semibold", 12.5f);
+        heading.ForeColor = Theme.Text;
+        heading.AutoEllipsis = true;
+        status.ForeColor = Theme.Muted;
+        status.AutoEllipsis = true;
+        closeButton.Text = "✕";
+        closeButton.Style = Chip.Look.Ghost;
+        closeButton.Accent = Theme.Muted;
+        closeButton.Font = new Font("Segoe UI", 9f);
         closeButton.Click += (s, e) => { statusOpen = false; Hide(); };
-        status.Bounds = new Rectangle(18, 38, 502, 22);
-        status.ForeColor = Color.FromArgb(96, 112, 123);
-        status.Text = "Elige una corrección";
-        rows.Bounds = new Rectangle(16, 67, 508, 54);
-        rows.FlowDirection = FlowDirection.LeftToRight;
-        rows.WrapContents = false;
-        rows.AutoScroll = true;
-        Controls.AddRange(new Control[] { heading, closeButton, status, rows });
-        Resize += (s, e) => { using (var path = Rounded(Bounds.Size, 14)) Region = new Region(path); };
-        using (var path = Rounded(Size, 14)) Region = new Region(path);
+        foreach (var panel in new[] { rows, actions })
+        {
+            panel.FlowDirection = FlowDirection.LeftToRight;
+            panel.WrapContents = true;
+            panel.AutoScroll = false;
+            panel.Margin = Padding.Empty;
+            panel.Padding = Padding.Empty;
+        }
+        Controls.AddRange(new Control[] { kindLabel, heading, closeButton, status, rows, actions });
+        Resize += (s, e) => { using (var path = Theme.Rounded(new Rectangle(0, 0, Width, Height), Theme.S(12))) Region = new Region(path); Invalidate(); };
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Corrector español " + AppVersion).Enabled = false;
         menu.Items.Add("Mostrar panel", null, (s, e) => ShowStatus());
+        menu.Items.Add("Diccionario personal…", null, (s, e) => OpenPersonalDictionary());
+        menu.Items.Add(new ToolStripSeparator());
         var spanishItem = (ToolStripMenuItem)menu.Items.Add("Idioma: español", null, (s, e) => SelectEnglish(false));
         var englishItem = (ToolStripMenuItem)menu.Items.Add("Idioma: inglés (Harper)", null, (s, e) => SelectEnglish(true));
         spanishItem.Click += (s, e) => { spanishItem.Checked = true; englishItem.Checked = false; };
         englishItem.Click += (s, e) => { if (englishMode) { spanishItem.Checked = false; englishItem.Checked = true; } };
         spanishItem.Checked = true;
-        menu.Items.Add("Pausar / reanudar", null, (s, e) => { active = !active; tray.Text = active ? "Corrector español " + AppVersion + ": activo" : "Corrector español " + AppVersion + ": pausado"; if (!active) { HideMarks(); Hide(); } });
+        menu.Items.Add(new ToolStripSeparator());
+        pauseItem = (ToolStripMenuItem)menu.Items.Add("Pausar", null, (s, e) => TogglePause());
         menu.Items.Add("Salir", null, (s, e) => Close());
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         tray.Icon = Icon;
@@ -210,35 +309,121 @@ internal sealed class Writer : Form
     void ShowStatus()
     {
         HideMarks();
-        rows.Controls.Clear();
+        ClearPanel(rows);
+        ClearPanel(actions);
+        kindLabel.Text = active ? "●  ACTIVO" : "●  PAUSADO";
+        kindLabel.ForeColor = Theme.Mark;
         heading.Text = "Corrector español " + AppVersion;
-        status.Text = active ? "Activo. Revisa los campos de texto compatibles." : "Pausado. Reanúdalo desde el icono junto al reloj.";
+        string engine = englishMode ? "inglés (Harper)" : speller.Language;
+        status.Text = active
+            ? "Motor " + engine + " · " + dictionary.Count + " palabras extra" + (dictionary.UserCount > 0 ? " (" + dictionary.UserCount + " tuyas)" : "")
+            : "Pausado. Reanúdalo aquí o desde el icono junto al reloj.";
+        actions.Controls.Add(Action("Diccionario personal", OpenPersonalDictionary));
+        actions.Controls.Add(Action(active ? "Pausar" : "Reanudar", () => { TogglePause(); ShowStatus(); }));
+        LayoutPanel();
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Bounds = new Rectangle(area.Right - Width - 18, area.Bottom - Height - 18, Width, Height);
+        Bounds = new Rectangle(area.Right - Width - Theme.S(16), area.Bottom - Height - Theme.S(16), Width, Height);
         statusOpen = true;
         statusUntilUtc = DateTime.UtcNow.AddSeconds(6);
         Show();
         BringToFront();
     }
 
-    static GraphicsPath Rounded(Size size, int radius)
+    Chip Action(string text, Action click)
     {
-        var path = new GraphicsPath();
-        int d = radius * 2;
-        path.AddArc(0, 0, d, d, 180, 90);
-        path.AddArc(size.Width - d - 1, 0, d, d, 270, 90);
-        path.AddArc(size.Width - d - 1, size.Height - d - 1, d, d, 0, 90);
-        path.AddArc(0, size.Height - d - 1, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
+        var chip = new Chip { Text = text, Style = Chip.Look.Ghost, Font = Font, Margin = new Padding(0, 0, Theme.S(4), 0) };
+        chip.Click += (s, e) => click();
+        return chip.Fit();
+    }
+
+    // Calcula la altura del panel según el número de sugerencias y acciones.
+    void LayoutPanel()
+    {
+        int width = Theme.S(380), pad = Theme.S(18), inner = width - pad * 2;
+        int y = Theme.S(14);
+        closeButton.Size = new Size(Theme.S(28), Theme.S(28));
+        closeButton.Location = new Point(width - closeButton.Width - Theme.S(10), Theme.S(10));
+        kindLabel.SetBounds(pad, y, inner - Theme.S(30), Theme.S(16));
+        y += Theme.S(17);
+        heading.SetBounds(pad, y, inner - Theme.S(30), Theme.S(28));
+        y += Theme.S(30);
+        // Control.Visible devuelve false mientras el panel está oculto: usar variables.
+        bool hasStatus = status.Text.Length > 0, hasRows = rows.Controls.Count > 0, hasActions = actions.Controls.Count > 0;
+        status.Visible = hasStatus;
+        rows.Visible = hasRows;
+        actions.Visible = hasActions;
+        if (hasStatus) { status.SetBounds(pad, y, inner, Theme.S(20)); y += Theme.S(26); }
+        if (hasRows)
+        {
+            foreach (Control chip in rows.Controls) chip.Margin = new Padding(0, 0, Theme.S(8), Theme.S(8));
+            var preferred = rows.GetPreferredSize(new Size(inner + Theme.S(8), 0));
+            rows.SetBounds(pad, y, inner + Theme.S(8), preferred.Height);
+            y += preferred.Height + Theme.S(2);
+        }
+        separatorY = -1;
+        if (hasActions)
+        {
+            separatorY = y;
+            y += Theme.S(6);
+            actions.SetBounds(pad - Theme.S(8), y, inner + Theme.S(16), Theme.S(30));
+            y += Theme.S(30);
+        }
+        Size = new Size(width, y + Theme.S(10));
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        using (var pen = new Pen(Color.FromArgb(223, 235, 242)))
-        using (var path = Rounded(ClientSize, 14))
-            e.Graphics.DrawPath(pen, path);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var pen = new Pen(Theme.Border))
+        {
+            if (separatorY >= 0) e.Graphics.DrawLine(pen, Theme.S(18), separatorY, Width - Theme.S(18), separatorY);
+            using (var path = Theme.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(12)))
+                e.Graphics.DrawPath(pen, path);
+        }
+    }
+
+    void TogglePause()
+    {
+        active = !active;
+        tray.Text = "Corrector español " + AppVersion + (active ? ": activo" : ": pausado");
+        pauseItem.Text = active ? "Pausar" : "Reanudar";
+        if (!active) { HideMarks(); Hide(); }
+        checkedFingerprint = lastSeen = "";
+    }
+
+    void OpenPersonalDictionary()
+    {
+        try
+        {
+            if (!File.Exists(dictionary.UserFile))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(dictionary.UserFile));
+                File.WriteAllText(dictionary.UserFile, "# Diccionario personal de SpanishWriter. Una palabra por línea." + Environment.NewLine +
+                    "# Guarda el archivo y el corrector lo recargará en unos segundos." + Environment.NewLine, new System.Text.UTF8Encoding(false));
+            }
+            Process.Start("notepad.exe", "\"" + dictionary.UserFile + "\"");
+        }
+        catch (Exception ex) { MessageBox.Show("No se pudo abrir el diccionario personal: " + ex.Message, "Corrector español"); }
+    }
+
+    DateTime DictionaryStamp()
+    {
+        try { return File.Exists(dictionary.UserFile) ? File.GetLastWriteTimeUtc(dictionary.UserFile) : DateTime.MinValue; }
+        catch { return DateTime.MinValue; }
+    }
+
+    // Recarga el diccionario personal si el usuario lo editó a mano.
+    void ReloadDictionaryIfChanged()
+    {
+        if ((DateTime.UtcNow - lastDictionaryProbeAt).TotalSeconds < 3) return;
+        lastDictionaryProbeAt = DateTime.UtcNow;
+        var stamp = DictionaryStamp();
+        if (stamp == dictionaryStamp) return;
+        // Si el archivo está bloqueado (por ejemplo, mientras se guarda), se reintenta luego.
+        if (!dictionary.Reload()) return;
+        dictionaryStamp = stamp;
+        checkedFingerprint = lastSeen = "";
     }
 
     List<Issue> Check(string text)
@@ -248,10 +433,11 @@ internal sealed class Writer : Form
         var accents = AccentRules.Check(text);
         foreach (var accent in accents)
         {
+            accent.Kind = "Tilde";
             native.RemoveAll(x => x.Start < accent.Start + accent.Length && accent.Start < x.Start + x.Length);
             native.Add(accent);
         }
-        return native.OrderBy(x => x.Start).Take(5).ToList();
+        return native.Where(x => !ignored.Contains(x.Word)).OrderBy(x => x.Start).Take(WindowsSpeller.MaxIssues).ToList();
     }
 
     string SuggestForWps(string word)
@@ -286,6 +472,7 @@ internal sealed class Writer : Form
             Hide();
         }
         if (!active) return;
+        ReloadDictionaryIfChanged();
         try
         {
             uint pid;
@@ -539,30 +726,70 @@ internal sealed class Writer : Form
         }
     }
 
+    // Controls.Clear() no libera los controles: desecharlos evita acumular recursos.
+    static void ClearPanel(Control panel)
+    {
+        var old = panel.Controls.Cast<Control>().ToArray();
+        panel.Controls.Clear();
+        foreach (var control in old) control.Dispose();
+    }
+
     void ShowSuggestions(Issue issue, Rectangle mark)
     {
         statusOpen = false;
-        rows.Controls.Clear();
-        heading.Text = "Revisar «" + issue.Word + "»";
-        status.Text = editable == null ? "Elige una sugerencia" : "Pulsa para corregir en el texto";
-        foreach (string candidate in issue.Suggestions)
+        ClearPanel(rows);
+        ClearPanel(actions);
+        bool accent = issue.Kind == "Tilde";
+        kindLabel.Text = accent ? "TILDE" : "ORTOGRAFÍA";
+        kindLabel.ForeColor = Theme.Mark;
+        heading.Text = issue.Word;
+        if (issue.Suggestions.Length == 0) status.Text = "No hay sugerencias para esta palabra.";
+        else if (targetConsole || (editable == null && textPattern == null)) status.Text = "Elige una sugerencia para copiarla.";
+        else status.Text = accent ? "Falta la tilde en este contexto." : "¿Quisiste decir…?";
+        for (int i = 0; i < issue.Suggestions.Length; i++)
         {
-            string replacement = candidate;
-            var button = new Button { Text = replacement, AutoSize = true, Height = 34, Margin = new Padding(0, 0, 8, 0), Padding = new Padding(10, 0, 10, 0), BackColor = Color.FromArgb(230, 247, 253), ForeColor = Color.FromArgb(0, 101, 137), FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
-            button.FlatAppearance.BorderColor = Color.FromArgb(175, 225, 242);
-            button.Click += (s, e) => Apply(issue, replacement);
-            rows.Controls.Add(button);
+            string replacement = issue.Suggestions[i];
+            var chip = new Chip { Text = replacement, Style = i == 0 ? Chip.Look.Primary : Chip.Look.Secondary, Font = chipFont };
+            chip.Click += (s, e) => Apply(issue, replacement);
+            rows.Controls.Add(chip.Fit());
         }
-        if (issue.Suggestions.Length == 0)
-            rows.Controls.Add(new Label { Text = "No hay sugerencias para esta palabra.", AutoSize = true, ForeColor = Color.FromArgb(96, 112, 123) });
+        if (!accent) actions.Controls.Add(Action("+ Agregar al diccionario", () => AddToDictionary(issue)));
+        actions.Controls.Add(Action("Ignorar", () => IgnoreWord(issue)));
+        LayoutPanel();
         var screen = Screen.FromPoint(mark.Location).WorkingArea;
         Left = Math.Max(screen.Left, Math.Min(screen.Right - Width, mark.Left));
-        Top = mark.Bottom + Height + 6 > screen.Bottom ? Math.Max(screen.Top, mark.Top - Height - 6) : mark.Bottom + 6;
+        Top = mark.Bottom + Height + Theme.S(6) > screen.Bottom ? Math.Max(screen.Top, mark.Top - Height - Theme.S(6)) : mark.Bottom + Theme.S(6);
         if (!Visible) Show();
+        Invalidate();
+    }
+
+    void AddToDictionary(Issue issue)
+    {
+        try
+        {
+            if (!dictionary.Add(issue.Word)) { status.Text = "Solo se pueden agregar palabras sin números ni espacios."; return; }
+            dictionaryStamp = DictionaryStamp();
+            Recheck();
+        }
+        catch (Exception ex) { status.Text = "No se pudo guardar: " + ex.Message; }
+    }
+
+    void IgnoreWord(Issue issue)
+    {
+        ignored.Add(issue.Word);
+        Recheck();
+    }
+
+    void Recheck()
+    {
+        checkedFingerprint = lastSeen = "";
+        HideMarks();
+        Hide();
     }
 
     void Apply(Issue issue, string replacement)
     {
+        bool inputStarted = false;
         try
         {
             if (targetConsole)
@@ -599,19 +826,41 @@ internal sealed class Writer : Form
                     var range = issue.Range ?? IssueRange(issue);
                     if (range != null)
                     {
-                        SetForegroundWindow(targetWindow);
-                        target.SetFocus();
-                        range.Select();
-                        TypeUnicode(replacement);
-                        applied = true;
+                        applied = ReplacementGuard.TryReplace(
+                            () => {
+                                if (!SetForegroundWindow(targetWindow))
+                                    throw new Exception("No se pudo activar el campo de texto.");
+                                target.SetFocus();
+                            },
+                            () => GetForegroundWindow() == targetWindow &&
+                                target.Equals(AutomationElement.FocusedElement),
+                            () => range.GetText(-1) == issue.Word &&
+                                (editable == null || editable.Current.Value == checkedText),
+                            () => range.Select(),
+                            () => {
+                                var selected = textPattern.GetSelection();
+                                return selected != null && selected.Length == 1 &&
+                                    selected[0].GetText(-1) == issue.Word &&
+                                    selected[0].CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.Start) == 0 &&
+                                    selected[0].CompareEndpoints(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.End) == 0;
+                            },
+                            () => { inputStarted = true; TypeUnicode(replacement); });
                     }
                 }
-                catch (Exception ex) { try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Selección de texto no disponible: " + ex + Environment.NewLine); } catch { } }
+                catch (Exception ex)
+                {
+                    // SendInput can fail after sending part of the text. Do not retry
+                    // through SetValue after any input has already been submitted.
+                    if (inputStarted) throw;
+                    try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Selección de texto no disponible: " + ex + Environment.NewLine); } catch { }
+                }
             }
             if (!applied && editable != null && !editable.Current.IsReadOnly)
             {
                 string live = editable.Current.Value;
-                if (live == checkedText && issue.Start + issue.Length <= live.Length)
+                if (live == checkedText && issue.Start >= 0 && issue.Length > 0 &&
+                    issue.Start <= live.Length - issue.Length &&
+                    live.Substring(issue.Start, issue.Length) == issue.Word)
                 {
                     editable.SetValue(live.Substring(0, issue.Start) + replacement + live.Substring(issue.Start + issue.Length));
                     applied = true;
@@ -623,7 +872,17 @@ internal sealed class Writer : Form
             HideMarks();
             Hide();
         }
-        catch (Exception ex) { status.Text = "No se pudo modificar este campo."; try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Error al aplicar: " + ex + Environment.NewLine); } catch { } }
+        catch (Exception ex)
+        {
+            if (inputStarted)
+            {
+                ClearPanel(rows);
+                HideMarks();
+                checkedText = checkedFingerprint = "";
+            }
+            status.Text = inputStarted ? "Windows no confirmó la corrección completa. Revisa el texto." : "No se pudo modificar este campo.";
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "SpanishWriter.log"), DateTime.Now.ToString("s") + " Error al aplicar: " + ex + Environment.NewLine); } catch { }
+        }
     }
 
     TextPatternRange IssueRange(Issue issue)
@@ -750,7 +1009,7 @@ internal sealed class Writer : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { timer.Dispose(); if (wpsServer != null) wpsServer.Dispose(); tray.Visible = false; tray.Dispose(); HideMarks(); }
+        if (disposing) { timer.Dispose(); chipFont.Dispose(); speller.Dispose(); if (wpsServer != null) wpsServer.Dispose(); tray.Visible = false; tray.Dispose(); HideMarks(); }
         base.Dispose(disposing);
     }
 
